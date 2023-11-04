@@ -1,4 +1,5 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
+import { SerialPort } from "serialport";
 
 import { SerialArduinoPlatform } from "./platform";
 
@@ -7,7 +8,7 @@ import { SerialArduinoPlatform } from "./platform";
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different service types.
  */
-export class ExamplePlatformAccessory {
+export class ArduinoAccessory {
   private service: Service;
 
   /**
@@ -19,9 +20,13 @@ export class ExamplePlatformAccessory {
     Brightness: 100,
   };
 
+  private serialPort: SerialPort;
+
   constructor(
     private readonly platform: SerialArduinoPlatform,
-    private readonly accessory: PlatformAccessory
+    private readonly accessory: PlatformAccessory,
+    private readonly serialPath: string,
+    private readonly serialBaudRate: number
   ) {
     // set accessory information
     this.accessory
@@ -63,67 +68,10 @@ export class ExamplePlatformAccessory {
       .getCharacteristic(this.platform.Characteristic.Brightness)
       .onSet(this.setBrightness.bind(this)); // SET - bind to the 'setBrightness` method below
 
-    /**
-     * Creating multiple services of the same type.
-     *
-     * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-     * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-     * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-     *
-     * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-     * can use the same sub type id.)
-     */
-
-    // Example: add two "motion sensor" services to the accessory
-    const motionSensorOneService =
-      this.accessory.getService("Motion Sensor One Name") ||
-      this.accessory.addService(
-        this.platform.Service.MotionSensor,
-        "Motion Sensor One Name",
-        "YourUniqueIdentifier-1"
-      );
-
-    const motionSensorTwoService =
-      this.accessory.getService("Motion Sensor Two Name") ||
-      this.accessory.addService(
-        this.platform.Service.MotionSensor,
-        "Motion Sensor Two Name",
-        "YourUniqueIdentifier-2"
-      );
-
-    /**
-     * Updating characteristics values asynchronously.
-     *
-     * Example showing how to update the state of a Characteristic asynchronously instead
-     * of using the `on('get')` handlers.
-     * Here we change update the motion sensor trigger states on and off every 10 seconds
-     * the `updateCharacteristic` method.
-     *
-     */
-    let motionDetected = false;
-    setInterval(() => {
-      // EXAMPLE - inverse the trigger
-      motionDetected = !motionDetected;
-
-      // push the new value to HomeKit
-      motionSensorOneService.updateCharacteristic(
-        this.platform.Characteristic.MotionDetected,
-        motionDetected
-      );
-      motionSensorTwoService.updateCharacteristic(
-        this.platform.Characteristic.MotionDetected,
-        !motionDetected
-      );
-
-      this.platform.log.debug(
-        "Triggering motionSensorOneService:",
-        motionDetected
-      );
-      this.platform.log.debug(
-        "Triggering motionSensorTwoService:",
-        !motionDetected
-      );
-    }, 10000);
+    this.serialPort = new SerialPort({
+      path: this.serialPath,
+      baudRate: this.serialBaudRate,
+    });
   }
 
   /**
@@ -135,6 +83,16 @@ export class ExamplePlatformAccessory {
     this.exampleStates.On = value as boolean;
 
     this.platform.log.debug("Set Characteristic On ->", value);
+    this.platform.log.debug("Typeof value: ", typeof value);
+
+    const message = value ? "on\n" : "off\n";
+
+    this.serialPort.write(message, function (err) {
+      if (err) {
+        return console.log("Error on write: ", err.message);
+      }
+      console.log("message written: ", message);
+    });
   }
 
   /**
